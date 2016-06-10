@@ -11,17 +11,23 @@ else:
     import ObjClass
     import userio
 
-CACHE_FILENAME = "cache.npz"
+CACHE_EXT = ".npz"
 
 IMAGE_FOLDER = "raw_img/"
 LABEL_FOLDER = "label/"
 
 class DataFeeder(object):
-    def __init__(self, data_path, data_padding=0, data_split_factor=8):
+    def __init__(self, data_path, filename="cache", data_padding=0, label_width=64, label_height=None):
+        if label_height is None:
+            label_height = label_width
+
         self.counter = 0
         self.data_path = data_path
+        self.filename = filename
         self.data_padding = data_padding
-        self.data_split_factor = data_split_factor
+
+        self.label_width = label_width
+        self.label_height = label_height
 
         self.img_data = None
         self.label_data = None
@@ -34,7 +40,7 @@ class DataFeeder(object):
         while True:
             cache_file = None
             try:
-                cache_path = join(self.data_path, CACHE_FILENAME)
+                cache_path = join(self.data_path, self.filename+CACHE_EXT)
                 cache_file = open(cache_path, "rb")
                 npz_file = np.load(cache_file)
                 self.img_data = npz_file['img_data']
@@ -54,7 +60,7 @@ class DataFeeder(object):
         "Creates cache file"
         print("Building Cache")
         # Cache files
-        cache_path = join(self.data_path, CACHE_FILENAME)
+        cache_path = join(self.data_path, self.filename+CACHE_EXT)
         img_data, label_data = self._load_data()
         cache_file = open(cache_path, "wb")
         np.savez_compressed(cache_file, img_data=img_data, label_data=label_data)
@@ -105,21 +111,27 @@ class DataFeeder(object):
         width = img_data.shape[2]
         padding_y = self.data_padding
         padding_x = self.data_padding
-        split_y = self.data_split_factor
-        split_x = self.data_split_factor
+        print("self.data_padding", self.data_padding)
 
-        split_label_height = int((height - 2*padding_y) / split_y)
-        split_label_width = int((width - 2*padding_x) / split_x)
+        split_label_height = self.label_height
+        split_label_width = self.label_width
+        print("split_label_height", split_label_height)
+        print("split_label_width", split_label_width)
 
         bimg_data = [None] * img_data.shape[0]
         blabel_data = [None] * label_data.shape[0]
 
+        start_y_indexes = range(padding_y, height-split_label_height-padding_y+1, split_label_height)
+        start_x_indexes = range(padding_x, width-split_label_width-padding_x+1, split_label_width)
+
+        total_sub_img = len(start_y_indexes) * len(start_x_indexes)
+
         for index, (image, label) in enumerate(zip(img_data, label_data)):
-            sub_image = [None] * split_y * split_x
-            sub_label = [None] * split_y * split_x
+            sub_image = [None] * total_sub_img
+            sub_label = [None] * total_sub_img
             counter = 0
-            for start_y in range(padding_y, height-padding_y, split_label_height):
-                for start_x in range(padding_x, width-padding_x, split_label_width):
+            for start_y in start_y_indexes:
+                for start_x in start_x_indexes:
                     sub_image[counter] = image[start_y-padding_y:
                                                start_y+split_label_height+padding_y,
                                                start_x-padding_x:
@@ -135,6 +147,13 @@ class DataFeeder(object):
 
         bimg_data = np.concatenate(bimg_data)
         blabel_data = np.concatenate(blabel_data)
+
+        print(bimg_data.shape)
+        print(blabel_data.shape)
+        keep = np.sum(blabel_data, axis=(1, 2, 3)) > 0
+        print(keep.shape)
+        bimg_data = bimg_data[keep]
+        blabel_data = blabel_data[keep]
 
         return (bimg_data, blabel_data)
 
