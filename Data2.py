@@ -72,7 +72,7 @@ class DataFeeder(object):
         print("Building Cache")
         # Cache files
         cache_path = join(self.data_path, self.filename+CACHE_EXT)
-        img_data, label_data = self._load_data()
+        img_data, label_data = self._load_data(slient=False)
         cache_file = open(cache_path, "wb")
         np.savez_compressed(cache_file, img_data=img_data, label_data=label_data)
         cache_file.close()
@@ -91,23 +91,34 @@ class DataFeeder(object):
 
         return (img_list)
 
-    def _load_data(self):
+    def _load_data(self, slient=True):
         "Loads data from the provided data_path"
+
+        raw_img_folder_path = join(self.data_path, IMAGE_FOLDER)
+        label_folder_path = join(self.data_path, LABEL_FOLDER)
 
         file_list = self._check_data_dir()
 
-        img_data = [None]*len(file_list)
-        label_data = [None]*len(file_list)
+        img_data = []
+        label_data = []
 
         for file_enum in enumerate(file_list):
             counter = file_enum[0]
             file_name = file_enum[1]
 
+            if not slient:
+                print("Reading", file_name)
+
             img_file_path = join(raw_img_folder_path, file_name)
-            img_data[counter] = cv2.imread(img_file_path)
+            t_img_data = cv2.imread(img_file_path)
 
             label_file_path = join(label_folder_path, file_name)
-            label_data[counter] = cv2.imread(label_file_path, cv2.IMREAD_UNCHANGED)
+            t_label_data = cv2.imread(label_file_path, cv2.IMREAD_UNCHANGED)
+
+            if len(img_data) == 0 or img_data[-1].shape == t_img_data.shape:
+                img_data.append(t_img_data)
+                label_data.append(t_label_data)
+            else: break
 
         img_data = np.array(img_data)
         label_data = np.array(label_data)
@@ -121,6 +132,7 @@ class DataFeeder(object):
         return (img_data, p_label_data)
 
     def _breakdown_n_filter(self, img_data, label_data):
+        # print(img_data.shape, label_data.shape)
         assert img_data.shape[0] == label_data.shape[0], "img_data, label_data count do not match"
         assert img_data.shape[1] == label_data.shape[1], "img_data, label_data height do not match"
         assert img_data.shape[2] == label_data.shape[2], "img_data, label_data width do not match"
@@ -168,55 +180,70 @@ class DataFeeder(object):
         # print(bimg_data.shape)
         # print(blabel_data.shape)
         keep = np.sum(blabel_data, axis=(1, 2, 3)) > 0
-        # print(keep.shape)
+        ## print(keep.shape)
         bimg_data = bimg_data[keep]
         blabel_data = blabel_data[keep]
+
+        # bimg_data = bimg_data
+        # blabel_data = blabel_data
 
         return (bimg_data, blabel_data)
 
 
     def get_batch(self, size):
         "Returns a batch of data"
+
+        img_batch = [None]*size
+        label_batch = [None]*size
+
         if not self.dynamic_load:
             assert size <= len(self.img_data), "Batch bigger than Data Set"
 
-            img_batch = [None]*size
-            label_batch = [None]*size
 
             for counter in range(size):
                 img_batch[counter] = self.img_data[self.counter]
                 label_batch[counter] = self.label_data[self.counter]
 
                 self.counter = (self.counter + 1) % len(self.img_data)
+                if self.counter == 0:
+                    print("data counter reset")
 
             img_batch = np.array(img_batch)
             label_batch = np.array(label_batch)
 
             return [img_batch, label_batch]
         else:
-            img_batch = [None]*size
-            label_batch = [None]*size
-
             raw_img_folder_path = join(self.data_path, IMAGE_FOLDER)
             label_folder_path = join(self.data_path, LABEL_FOLDER)
 
             while self.dynamic_load_buffer.qsize() < size:
 
-                img_data = [None]*LOAD_N_IMAGES_AT_A_TIME
-                label_data = [None]*LOAD_N_IMAGES_AT_A_TIME
+                img_data = []
+                label_data = []
 
                 for counter in range(LOAD_N_IMAGES_AT_A_TIME):
                     file_name = self.file_list[self.counter]
-                    self.counter = (self.counter + 1) % len(self.file_list)
 
                     img_file_path = join(raw_img_folder_path, file_name)
-                    img_data[counter] = cv2.imread(img_file_path)
+                    t_img_data = cv2.imread(img_file_path)
 
                     label_file_path = join(label_folder_path, file_name)
-                    label_data[counter] = cv2.imread(label_file_path, cv2.IMREAD_UNCHANGED)
+                    t_label_data = cv2.imread(label_file_path, cv2.IMREAD_UNCHANGED)
+
+                    if len(img_data) == 0 or t_img_data.shape == img_data[-1].shape:
+                        img_data.append(t_img_data)
+                        label_data.append(t_label_data)
+                    else: break
+
+                    # print(self.counter, counter, np.array(img_data[counter]).shape, np.array(label_data[counter]).shape)
+
+                    self.counter = (self.counter + 1) % len(self.file_list)
+                    if self.counter == 0:
+                        print("data counter reset")
 
                 img_data = np.array(img_data)
                 label_data = np.array(label_data)
+                # print("FINAL SHAPE", img_data.shape, label_data.shape)
                 img_data, label_data = self._breakdown_n_filter(img_data, label_data)
 
                 p_label_data = [None]*len(label_data)
