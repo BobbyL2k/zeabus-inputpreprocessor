@@ -7,10 +7,10 @@ import numpy as np
 from queue import Queue
 
 if __name__ != "__main__":
-    from . import ObjClass
+    from . import ObjClass2 as ObjClass
     from . import userio
 else:
-    import ObjClass
+    import ObjClass2 as ObjClass
     import userio
 
 CACHE_EXT = ".npz"
@@ -107,9 +107,6 @@ class DataFeeder(object):
             counter = file_enum[0]
             file_name = file_enum[1]
 
-            if not slient:
-                print("Reading", file_name)
-
             img_file_path = join(raw_img_folder_path, file_name)
             t_img_data = cv2.imread(img_file_path)
 
@@ -120,6 +117,9 @@ class DataFeeder(object):
                 img_data.append(t_img_data)
                 label_data.append(t_label_data)
             else: break
+
+            if not slient:
+                print("Reading", file_name)
 
         img_data = np.array(img_data)
         label_data = np.array(label_data)
@@ -200,14 +200,14 @@ class DataFeeder(object):
                 print("data counter reset")
         return index
 
-    def get_batch(self, size, shuffle=False):
+    def get_batch(self, size, shuffle=False, slient=True):
         "Returns a batch of data"
 
         img_batch = [None]*size
         label_batch = [None]*size
 
         if not self.dynamic_load:
-            assert size <= len(self.img_data), "Batch bigger than Data Set"
+            # assert size <= len(self.img_data), "Batch bigger than Data Set"
 
             for counter in range(size):
                 index = self._get_file_index(shuffle, len(self.img_data))
@@ -242,6 +242,8 @@ class DataFeeder(object):
                         img_data.append(t_img_data)
                         label_data.append(t_label_data)
                     else: break
+                    if not slient:
+                        print("Loading", file_name)
 
                     # print(self.counter, counter, np.array(img_data[counter]).shape, np.array(label_data[counter]).shape)
 
