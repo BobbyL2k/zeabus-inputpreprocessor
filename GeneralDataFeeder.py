@@ -20,43 +20,50 @@ LABEL_FOLDER = "label/"
 
 LOAD_N_IMAGES_AT_A_TIME = 10
 
+def dummy(input):
+    return input
+
 class DataFeeder(object):
-    def __init__(self, data_path, filename="cache", dynamic_load=False,
+    def __init__(self, data_path, cache_name="cache", dynamic_load=False,
+                 raw_preprocess=dummy, label_preprocess=dummy,
                  data_padding=0, label_width=64, label_height=None):
         if label_height is None:
             label_height = label_width
 
-        self.counter = 0
-        self.data_path = data_path
-        self.dynamic_load = dynamic_load
-        self.filename = filename
-        self.data_padding = data_padding
+        self._counter = 0
+        self._data_path = data_path
+        self._dynamic_load = dynamic_load
+        self._cache_name = cache_name
+        self._data_padding = data_padding
 
-        self.label_width = label_width
-        self.label_height = label_height
+        self._raw_preprocess = raw_preprocess
+        self._label_preprocess = label_preprocess
 
-        self.img_data = None
-        self.label_data = None
+        self._label_width = label_width
+        self._label_height = label_height
 
-        self.file_list = None
-        self.dynamic_load_buffer = Queue()
+        self._img_data = None
+        self._label_data = None
+
+        self._file_list = None
+        self._dynamic_load_buffer = Queue()
 
         if not dynamic_load:
             self._load_cache()
             print("DataFeeder loaded the cache")
         else:
-            self.file_list = self._check_data_dir()
+            self._file_list = self._check_data_dir()
 
 
     def _load_cache(self):
         while True:
             cache_file = None
             try:
-                cache_path = join(self.data_path, self.filename+CACHE_EXT)
+                cache_path = join(self._data_path, self._cache_name+CACHE_EXT)
                 cache_file = open(cache_path, "rb")
                 npz_file = np.load(cache_file)
-                self.img_data = npz_file['img_data']
-                self.label_data = npz_file['label_data']
+                self._img_data = npz_file['img_data']
+                self._label_data = npz_file['label_data']
                 return
             except IOError as error:
                 if(error.errno == 2 # No such file or directory
@@ -72,7 +79,7 @@ class DataFeeder(object):
         "Creates cache file"
         print("Building Cache")
         # Cache files
-        cache_path = join(self.data_path, self.filename+CACHE_EXT)
+        cache_path = join(self._data_path, self._cache_name+CACHE_EXT)
         img_data, label_data = self._load_data(slient=False)
         cache_file = open(cache_path, "wb")
         np.savez_compressed(cache_file, img_data=img_data, label_data=label_data)
@@ -81,8 +88,8 @@ class DataFeeder(object):
 
     def _check_data_dir(self):
         # Load data
-        raw_img_folder_path = join(self.data_path, IMAGE_FOLDER)
-        label_folder_path = join(self.data_path, LABEL_FOLDER)
+        raw_img_folder_path = join(self._data_path, IMAGE_FOLDER)
+        label_folder_path = join(self._data_path, LABEL_FOLDER)
         img_list = DataFeeder.get_file_list(raw_img_folder_path)
         label_list = DataFeeder.get_file_list(label_folder_path)
 
@@ -95,8 +102,8 @@ class DataFeeder(object):
     def _load_data(self, slient=True):
         "Loads data from the provided data_path"
 
-        raw_img_folder_path = join(self.data_path, IMAGE_FOLDER)
-        label_folder_path = join(self.data_path, LABEL_FOLDER)
+        raw_img_folder_path = join(self._data_path, IMAGE_FOLDER)
+        label_folder_path = join(self._data_path, LABEL_FOLDER)
 
         file_list = self._check_data_dir()
 
@@ -139,12 +146,12 @@ class DataFeeder(object):
         assert img_data.shape[2] == label_data.shape[2], "img_data, label_data width do not match"
         height = img_data.shape[1]
         width = img_data.shape[2]
-        padding_y = self.data_padding
-        padding_x = self.data_padding
-        # print("self.data_padding", self.data_padding)
+        padding_y = self._data_padding
+        padding_x = self._data_padding
+        # print("self._data_padding", self._data_padding)
 
-        split_label_height = self.label_height
-        split_label_width = self.label_width
+        split_label_height = self._label_height
+        split_label_width = self._label_width
         # print("split_label_height", split_label_height)
         # print("split_label_width", split_label_width)
 
@@ -194,9 +201,9 @@ class DataFeeder(object):
         if shuffle:
             index = int(random()*bound)
         else:
-            index = self.counter
-            self.counter = (self.counter + 1) % bound
-            if self.counter == 0:
+            index = self._counter
+            self._counter = (self._counter + 1) % bound
+            if self._counter == 0:
                 print("data counter reset")
         return index
 
@@ -206,39 +213,39 @@ class DataFeeder(object):
         img_batch = [None]*size
         label_batch = [None]*size
 
-        if not self.dynamic_load:
-            # assert size <= len(self.img_data), "Batch bigger than Data Set"
+        if not self._dynamic_load:
+            # assert size <= len(self._img_data), "Batch bigger than Data Set"
 
             for counter in range(size):
-                index = self._get_file_index(shuffle, len(self.img_data))
+                index = self._get_file_index(shuffle, len(self._img_data))
 
-                img_batch[counter] = self.img_data[index]
-                label_batch[counter] = self.label_data[index]
+                img_batch[counter] = self._img_data[index]
+                label_batch[counter] = self._label_data[index]
 
             img_batch = np.array(img_batch)
             label_batch = np.array(label_batch)
 
             return [img_batch, label_batch]
         else:
-            raw_img_folder_path = join(self.data_path, IMAGE_FOLDER)
-            label_folder_path = join(self.data_path, LABEL_FOLDER)
+            raw_img_folder_path = join(self._data_path, IMAGE_FOLDER)
+            label_folder_path = join(self._data_path, LABEL_FOLDER)
 
-            while self.dynamic_load_buffer.qsize() < size:
+            while self._dynamic_load_buffer.qsize() < size:
 
                 img_data = []
                 label_data = []
 
                 for counter in range(LOAD_N_IMAGES_AT_A_TIME):
-                    index = self._get_file_index(shuffle, len(self.file_list))
-                    file_name = self.file_list[index]
+                    index = self._get_file_index(shuffle, len(self._file_list))
+                    file_name = self._file_list[index]
 
                     img_file_path = join(raw_img_folder_path, file_name)
                     t_img_data = cv2.imread(img_file_path)
-                    t_img_data = cv2.resize(t_img_data, (640, 512))
+                    t_img_data = self._raw_preprocess(t_img_data)
 
                     label_file_path = join(label_folder_path, file_name)
                     t_label_data = cv2.imread(label_file_path, cv2.IMREAD_UNCHANGED)
-                    t_label_data = cv2.resize(t_label_data, (640, 512))
+                    t_label_data = self._label_preprocess(t_label_data)
 
                     if len(img_data) == 0 or t_img_data.shape == img_data[-1].shape:
                         img_data.append(t_img_data)
@@ -247,7 +254,7 @@ class DataFeeder(object):
                     if not slient:
                         print("Loading", file_name)
 
-                    # print(self.counter, counter, np.array(img_data[counter]).shape, np.array(label_data[counter]).shape)
+                    # print(self._counter, counter, np.array(img_data[counter]).shape, np.array(label_data[counter]).shape)
 
                 img_data = np.array(img_data)
                 label_data = np.array(label_data)
@@ -260,10 +267,10 @@ class DataFeeder(object):
                     p_label_data[index] = ObjClass.process_label(label_data[index])
 
                 for data in zip(img_data, p_label_data):
-                    self.dynamic_load_buffer.put(data)
+                    self._dynamic_load_buffer.put(data)
 
             for counter in range(size):
-                img_batch[counter], label_batch[counter] = self.dynamic_load_buffer.get()
+                img_batch[counter], label_batch[counter] = self._dynamic_load_buffer.get()
 
             img_batch = np.array(img_batch)
             label_batch = np.array(label_batch)
